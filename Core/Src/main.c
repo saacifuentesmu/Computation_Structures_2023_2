@@ -41,6 +41,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
+DMA_HandleTypeDef hdma_adc1;
 
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim7;
@@ -52,6 +53,8 @@ DMA_HandleTypeDef hdma_usart2_tx;
 uint8_t rx_buffer[4];
 
 uint8_t tx_busy = 0;
+
+uint16_t adc_buffer[10];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -92,23 +95,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	static uint32_t counter = 0;
 
 	printf("Counter: %ld\r\n", counter++);
-}
-
-void update_adc_channel(uint32_t new_channel)
-{
-	ADC_ChannelConfTypeDef sConfig = {0};
-	/** Configure Regular Channel
-	  */
-	sConfig.Channel = new_channel;
-	sConfig.Rank = ADC_REGULAR_RANK_1;
-	sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
-	sConfig.SingleDiff = ADC_SINGLE_ENDED;
-	sConfig.OffsetNumber = ADC_OFFSET_NONE;
-	sConfig.Offset = 0;
-	if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-	{
-		Error_Handler();
-	}
 }
 /* USER CODE END 0 */
 
@@ -156,26 +142,18 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  for (uint8_t idx =0; idx <= 0x0F; idx++)
-	  printf("IDX: 0x%02X\r\n", idx);
   while (1)
   {
-	update_adc_channel(ADC_CHANNEL_1);
-	HAL_ADC_Start(&hadc1);
-	HAL_ADC_PollForConversion(&hadc1, 10);
-	uint16_t adc_value = HAL_ADC_GetValue(&hadc1);
-	HAL_ADC_Stop(&hadc1);
+	  HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_buffer, 10);
+	  HAL_Delay(1000);
+	  uint32_t adc_channel_1 = adc_buffer[0] + adc_buffer[2] +
+			  adc_buffer[4] + adc_buffer[6] + adc_buffer[8];
+	  adc_channel_1 = adc_channel_1 / 5;
+	  uint32_t adc_channel_2 = adc_buffer[1] + adc_buffer[3] +
+	  			  adc_buffer[5] + adc_buffer[7] + adc_buffer[9];
+	  	  adc_channel_2 = adc_channel_2 / 5;
+	  printf("Average: %ld, %ld\r\n", adc_channel_1, adc_channel_2);
 
-	update_adc_channel(ADC_CHANNEL_2);
-	HAL_ADC_Start(&hadc1);
-	HAL_ADC_PollForConversion(&hadc1, 10);
-	uint16_t adc_value2 = HAL_ADC_GetValue(&hadc1);
-	HAL_ADC_Stop(&hadc1);
-
-	float adc_voltage = (adc_value / 4096.0) * 3.3;
-	float adc_voltage2 = (adc_value2 / 4096.0) * 3.3;
-	printf("ADC Reading: %f, %f\r\n", adc_voltage, adc_voltage2);
-	HAL_Delay(1000);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -258,10 +236,10 @@ static void MX_ADC1_Init(void)
   hadc1.Init.Resolution = ADC_RESOLUTION_12B;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
   hadc1.Init.ScanConvMode = ADC_SCAN_ENABLE;
-  hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  hadc1.Init.EOCSelection = ADC_EOC_SEQ_CONV;
   hadc1.Init.LowPowerAutoWait = DISABLE;
   hadc1.Init.ContinuousConvMode = ENABLE;
-  hadc1.Init.NbrOfConversion = 1;
+  hadc1.Init.NbrOfConversion = 2;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
@@ -471,6 +449,9 @@ static void MX_DMA_Init(void)
   __HAL_RCC_DMA1_CLK_ENABLE();
 
   /* DMA interrupt init */
+  /* DMA1_Channel1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
   /* DMA1_Channel7_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel7_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel7_IRQn);
